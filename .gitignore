@@ -1,5 +1,33 @@
+# === Ignore the ONNX model ===
 model.onnx
 
-/input
-/output
+# === Ignore downloaded model folders ===
+onnx/
+models/
+*.onnx
+*.bin
 
+
+~/.cache/huggingface/
+~/.cache/torch/
+~/.cache/onnxruntime/
+~/.huggingface/
+
+/input/
+/output/
+
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+
+.env
+.venv
+env/
+venv/
+
+.vscode/
+.idea/
