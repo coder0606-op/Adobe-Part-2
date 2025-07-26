@@ -7,6 +7,8 @@ from pdf_extractor import extract_chunks_from_pdf
 from semantic_ranker import rank_chunks_by_relevance, format_output
 from outline_generator import generate_outline
 
+from download_utils import download_model_if_missing
+
 logging.basicConfig(level=logging.INFO, format="🔹 [%(levelname)s] %(message)s")
 
 INPUT_DIR = "input"
@@ -81,5 +83,6 @@ def main():
         logging.error(f"❌ Failed to write result.json: {e}")
 
 if __name__ == "__main__":
+    download_model_if_missing("model.onnx")
     logging.info("🚀 Starting processing pipeline")
     main()
