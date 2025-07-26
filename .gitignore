@@ -1,1 +1,5 @@
-/model.onnx
+model.onnx
+
+/input
+/output
+
