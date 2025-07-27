@@ -52,10 +52,10 @@ def rank_chunks_by_relevance(
 ) -> List[Dict]:
     """Rank all chunks by semantic similarity and return the top K with metadata."""
     query = f"{persona}. Task: {job}"
-    query_embedding = encode([query])[0]  # shape: (dim,)
+    query_embedding = encode([query])[0] 
     
     chunk_texts = [f"{chunk['section_title']} {chunk['content']}" for chunk in chunks]
-    chunk_embeddings = encode(chunk_texts)  # shape: (N, dim)
+    chunk_embeddings = encode(chunk_texts)  
 
     for i, chunk in enumerate(chunks):
         score = cosine_similarity(query_embedding, chunk_embeddings[i])
@@ -75,7 +75,6 @@ def format_output(
     job: str,
     top_chunks: List[Dict]
 ) -> Dict:
-    """Create final output JSON in required format."""
     timestamp = get_current_timestamp()
     output = {
         "metadata": {

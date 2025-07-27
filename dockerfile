@@ -1,19 +1,22 @@
 FROM python:3.10-slim
 
-# Install required system dependencies
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+
 WORKDIR /app
 
-# Copy all project files into the container
+
+RUN curl -L -o model.onnx https://huggingface.co/onnx-models/paraphrase-multilingual-MiniLM-L12-v2-onnx/resolve/main/model.onnx
+
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
 COPY . .
 
-# Upgrade pip and install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip \
- && pip install --no-cache-dir -r requirements.txt
-
-# Run the app
 CMD ["python", "main.py"]

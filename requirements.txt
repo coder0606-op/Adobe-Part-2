@@ -3,4 +3,5 @@ onnxruntime==1.17.3
 requests==2.31.0
 numpy<2
 PyMuPDF
+pdfplumber
 

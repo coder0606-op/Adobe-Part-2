@@ -5,26 +5,26 @@ from pathlib import Path
 
 from pdf_extractor import extract_chunks_from_pdf
 from semantic_ranker import rank_chunks_by_relevance, format_output
-from outline_generator import generate_outline
-
-from download_utils import download_model_if_missing
+from outline_generator import extract_headings
 
 logging.basicConfig(level=logging.INFO, format="🔹 [%(levelname)s] %(message)s")
 
-INPUT_DIR = "input"
-OUTPUT_DIR = "output"
-INPUT_JSON_PATH = os.path.join(INPUT_DIR, "challenge.json")
-RESULT_PATH = os.path.join(OUTPUT_DIR, "result.json")
+BASE_DIR = "collection"
+PDF_DIR = os.path.join(BASE_DIR, "pdfs")
+INPUT_JSON_PATH = os.path.join(BASE_DIR, "challenge1b_input.json")
+OUTPUT_JSON_PATH = os.path.join(BASE_DIR, "challenge1b_output.json")
+
+
 
 def load_input_json():
     if not os.path.exists(INPUT_JSON_PATH):
-        logging.error("❌ input.json not found in input directory.")
+        logging.error("❌ Input JSON not found.")
         return None
     try:
         with open(INPUT_JSON_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        logging.error(f"❌ Failed to load input.json: {e}")
+        logging.error(f"❌ Failed to read input JSON: {e}")
         return None
 
 def main():
@@ -32,57 +32,46 @@ def main():
     if not metadata:
         return
 
-    documents = metadata.get("documents", [])
     persona = metadata.get("persona", {}).get("role", "Unknown Persona")
     job = metadata.get("job_to_be_done", {}).get("task", "No job specified")
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    all_results = []
 
-    all_chunks = []
-
-    for doc in documents:
-        filename = doc.get("filename")
-        if not filename:
-            logging.warning("⚠️ Skipping document without filename.")
+    for filename in os.listdir(PDF_DIR):
+        if not filename.lower().endswith(".pdf"):
             continue
 
-        input_pdf_path = os.path.join(INPUT_DIR, filename)
-        if not os.path.exists(input_pdf_path):
-            logging.warning(f"⚠️ PDF file not found: {input_pdf_path}")
-            continue
+        input_pdf_path = os.path.join(PDF_DIR, filename)
 
         try:
-            outline = generate_outline(input_pdf_path)
-            chunks = extract_chunks_from_pdf(input_pdf_path,outline=outline)
+            outline = extract_headings(input_pdf_path)["outline"]
+            chunks = extract_chunks_from_pdf(input_pdf_path, outline=outline)
 
             for chunk in chunks:
                 chunk["document"] = filename
 
-            all_chunks.extend(chunks)
+            if not chunks:
+                logging.warning(f"⚠️ No chunks found in {filename}")
+                continue
 
-            logging.info(f"✅ Extracted {len(chunks)} chunks from {filename}")
+            top_chunks = rank_chunks_by_relevance(chunks, persona, job, top_k=1)
+            top_chunk = top_chunks[0] if top_chunks else {}
+
+            result = format_output([filename], persona, job, [top_chunk])
+            all_results.append(result)
+
+            logging.info(f"✅ Processed {filename} with {len(chunks)} chunks")
 
         except Exception as e:
             logging.error(f"❌ Failed processing {filename}: {e}")
 
-    if not all_chunks:
-        logging.warning("⚠️ No chunks extracted from any document. Exiting.")
-        return
-
-    top_chunks = rank_chunks_by_relevance(all_chunks, persona, job, top_k=1)
-    top_chunk = top_chunks[0] if top_chunks else {}
-
-    input_docs = sorted({c.get("document", "Unknown") for c in all_chunks})
-    result = format_output(input_docs, persona, job, [top_chunk])
-
     try:
-        with open(RESULT_PATH, "w", encoding="utf-8") as f:
-            json.dump(result, f, ensure_ascii=False, indent=2)
-        logging.info(f"🎯 Final output written to {RESULT_PATH}")
+        with open(OUTPUT_JSON_PATH, "w", encoding="utf-8") as f:
+            json.dump(all_results, f, ensure_ascii=False, indent=2)
+        logging.info(f"🎯 Final output written to {OUTPUT_JSON_PATH}")
     except Exception as e:
-        logging.error(f"❌ Failed to write result.json: {e}")
+        logging.error(f"❌ Failed to write output JSON: {e}")
 
 if __name__ == "__main__":
-    download_model_if_missing("model.onnx")
-    logging.info("🚀 Starting processing pipeline")
+    logging.info("🚀 Starting document processing pipeline")
     main()
