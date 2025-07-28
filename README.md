@@ -1,72 +1,64 @@
 # 🚀 Adobe Hackathon Submission - Multilingual PDF Processor
 
-This project is a complete solution for the Adobe Hackathon Challenge. It ingests a structured `challenge.json` file and associated PDF documents, extracts relevant multilingual text, computes semantic similarity using a lightweight ONNX-based model, and generates a ranked output based on the job to be done.
-
----
-
 ## 📁 Project Structure
 
 .
-├── main.py # Entry script to run the solution
-├── model.onnx # ONNX model (download manually)
-│ extractor.py # PDF text extraction
-│ embedder.py # Semantic embedder using ONNX
-│ ranker.py # Cosine similarity-based ranking
-├── input/ # Place your challenge.json and PDFs here
-├── output/ # Outputs (answer.json, chunks.json)
-├── .gitignore # Git ignore rules
+├── collection/
+│ ├── challenge1b_input.json # Input JSON file
+│ └── pdfs/
+│ ├── doc1.pdf
+│ ├── doc2.pdf
+│ └── ...
+├── main.py
+├── tokenizer/
+├── requirements.txt # Python dependencies
+├── Dockerfile # Docker configuration
 └── README.md # This file
 
----
+## 🛠️ Setup Instructions
 
-## ✅ Requirements
+1. **Create the folder structure**:
 
-- Python 3.10+
-- pip (Python package manager)
-- Internet connection (only for first-time model download)
-- Docker (optional)
+   ```bash
+   mkdir -p collection/pdfs
+   ```
 
----
+2. **Place your files**:
 
-## 📦 Install Dependencies
+   ```Place your files:
+   Put challenge1b_input.json in the collection/ folder
 
-If you're running locally:
+   Put all PDF documents in the collection/pdfs/ folder
+   ```
 
-```bash
-pip install -r requirements.txt
+🐳 Docker Commands
 
+1. Build the Docker image:
+   docker build -t adobe-part2-app .
+2. Run the processor:
+   docker run --rm -v $(pwd)/collection:/app/collection adobe-part2-app
 
-```
+📝 Notes
 
-✅ All dependencies are lightweight. torch is not used.
+- The processor will:
 
-wget https://huggingface.co/onnx-models/paraphrase-multilingual-MiniLM-L12-v2-onnx/resolve/main/model.onnx -O model.onnx
+  Read input from collection/challenge1b_input.json
 
-📂 Step 2: Setup Input & Output Folders
-Create the input/ and output/ folders if they do not exist:
+  Process PDFs from collection/pdfs/
 
-bash
-Copy
-Edit
-mkdir input output
-Place your challenge.json and all PDF files in the input/ folder like this:
+  Generate output in the same collection/ folder
 
-pgsql
-Copy
-Edit
-input/
-├── challenge.json
-├── doc1.pdf
-├── doc2.pdf
+- Ensure all PDFs referenced in the JSON are present in the pdfs/ folder
 
-Build the Docker image:
+This README now:
 
-bash
-Copy
-Edit
-docker build -t adobe-solution .
+1. Clearly shows the exact folder structure you requested
+2. Provides simple Docker commands for building and running
+3. Removes all unnecessary information about local installation
+4. Keeps only the essential instructions for running with Docker
+5. Maintains clean formatting and organization
 
-docker run --rm \
- -v $(pwd)/input:/app/input \
- -v $(pwd)/output:/app/output \
- adobe-solution
+The instructions assume the user already has:
+
+- Docker installed
+- The input JSON and PDFs ready to be placed in the specified folders

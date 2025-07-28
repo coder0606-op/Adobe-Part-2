@@ -1,77 +1,86 @@
 import os
 import json
-import logging
-from pathlib import Path
+from typing import List, Dict
+from multiprocessing import Pool
 
-from pdf_extractor import extract_chunks_from_pdf
-from semantic_ranker import rank_chunks_by_relevance, format_output
-from outline_generator import extract_headings
-
-logging.basicConfig(level=logging.INFO, format="🔹 [%(levelname)s] %(message)s")
-
-BASE_DIR = "collection"
-PDF_DIR = os.path.join(BASE_DIR, "pdfs")
-INPUT_JSON_PATH = os.path.join(BASE_DIR, "challenge1b_input.json")
-OUTPUT_JSON_PATH = os.path.join(BASE_DIR, "challenge1b_output.json")
+from pdf_extractor import extract_chunks
+from semantic_ranker import rank_chunks
+from outline_generator import format_output
 
 
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-def load_input_json():
-    if not os.path.exists(INPUT_JSON_PATH):
-        logging.error("❌ Input JSON not found.")
-        return None
+def process_pdfs(pdf_paths: List[str]) -> List[Dict]:
+    with Pool(processes=min(4, len(pdf_paths))) as pool:
+        results = pool.map(extract_chunks, pdf_paths)
+    all_chunks = [chunk for result in results for chunk in result]
+    print(f"Total chunks from all PDFs: {len(all_chunks)}")
+    return all_chunks
+
+def main(input_json_path: str, output_json_path: str):
     try:
-        with open(INPUT_JSON_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
+        with open(input_json_path, "r") as f:
+            input_data = json.load(f)
     except Exception as e:
-        logging.error(f"❌ Failed to read input JSON: {e}")
-        return None
-
-def main():
-    metadata = load_input_json()
-    if not metadata:
+        print(f"❌ Error reading {input_json_path}: {str(e)}")
         return
 
-    persona = metadata.get("persona", {}).get("role", "Unknown Persona")
-    job = metadata.get("job_to_be_done", {}).get("task", "No job specified")
+    input_docs = [doc["filepath"] for doc in input_data.get("documents", [])]
+    persona_raw = input_data.get("persona", "Unknown")
+    job_raw = input_data.get("job_to_be_done", "Unknown")
 
-    all_results = []
+    if isinstance(job_raw, dict):
+        job = job_raw.get("task", "Unknown")
+    elif isinstance(job_raw, str):
+        job = job_raw
+    else:
+        print(f"⚠️ Unexpected format for job_to_be_done: {type(job_raw)}. Using string fallback.")
+        job = str(job_raw)
+    if isinstance(persona_raw, dict):
+        persona = persona_raw.get("role", "Unknown")
+    elif isinstance(persona_raw, str):
+        persona = persona_raw
+    else:
+        print(f"⚠️ Unexpected format for persona: {type(persona_raw)}. Using string fallback.")
+        persona = str(persona_raw)
 
-    for filename in os.listdir(PDF_DIR):
-        if not filename.lower().endswith(".pdf"):
-            continue
 
-        input_pdf_path = os.path.join(PDF_DIR, filename)
+    top_chunks = input_data.get("top_chunks", [])
+    if not top_chunks:
+        valid_docs = [doc for doc in input_docs if os.path.exists(doc)]
+        if not valid_docs:
+            print("❌ No valid PDF files found.")
+            return
+        print(f"📄 Processing {len(valid_docs)} PDFs: {valid_docs}")
+        all_chunks = process_pdfs(valid_docs)
+        top_chunks = rank_chunks(all_chunks, job)
 
-        try:
-            outline = extract_headings(input_pdf_path)["outline"]
-            chunks = extract_chunks_from_pdf(input_pdf_path, outline=outline)
-
-            for chunk in chunks:
-                chunk["document"] = filename
-
-            if not chunks:
-                logging.warning(f"⚠️ No chunks found in {filename}")
-                continue
-
-            top_chunks = rank_chunks_by_relevance(chunks, persona, job, top_k=1)
-            top_chunk = top_chunks[0] if top_chunks else {}
-
-            result = format_output([filename], persona, job, [top_chunk])
-            all_results.append(result)
-
-            logging.info(f"✅ Processed {filename} with {len(chunks)} chunks")
-
-        except Exception as e:
-            logging.error(f"❌ Failed processing {filename}: {e}")
+    output = format_output(input_docs, persona, job, top_chunks)
 
     try:
-        with open(OUTPUT_JSON_PATH, "w", encoding="utf-8") as f:
-            json.dump(all_results, f, ensure_ascii=False, indent=2)
-        logging.info(f"🎯 Final output written to {OUTPUT_JSON_PATH}")
+        with open(output_json_path, "w") as f:
+            json.dump(output, f, indent=4)
+        print(f"✅ Output saved to {output_json_path}")
     except Exception as e:
-        logging.error(f"❌ Failed to write output JSON: {e}")
+        print(f"❌ Error saving output: {str(e)}")
+
 
 if __name__ == "__main__":
-    logging.info("🚀 Starting document processing pipeline")
-    main()
+    json_path = "collection/challenge1b_input.json"
+    base_path = "collection/pdfs"
+
+    with open(json_path, "r") as f:
+        data = json.load(f)
+
+    for doc in data.get("documents", []):
+        doc["filepath"] = os.path.join(base_path, doc["filename"])
+
+    with open(json_path, "w") as f:
+        json.dump(data, f, indent=4)
+
+    print("✅ Added full paths under 'filepath' in documents")
+
+    input_path = "collection/challenge1b_input.json"
+    output_path = "collection/challenge1b_output.json"
+
+    main(input_path, output_path)

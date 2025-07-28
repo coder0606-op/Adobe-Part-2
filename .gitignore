@@ -1,33 +1,39 @@
-# === Ignore the ONNX model ===
+# === Ignore ONNX model files ===
 model.onnx
+*.onnx
+*.bin
 
 # === Ignore downloaded model folders ===
 onnx/
 models/
-*.onnx
-*.bin
 
+# === Ignore PDF + JSON collection ===
+/collection
+/collection/*
 
+# === Ignore cache directories ===
 ~/.cache/huggingface/
 ~/.cache/torch/
 ~/.cache/onnxruntime/
 ~/.huggingface/
 
+# === Ignore input/output folders ===
 /input/
 /output/
 
-
+# === Ignore Python cache files ===
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 *.log
 
-
+# === Ignore environment files ===
 .env
 .venv
 env/
 venv/
 
+# === Ignore IDE/editor configs ===
 .vscode/
 .idea/

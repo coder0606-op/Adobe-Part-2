@@ -1,82 +1,101 @@
+# --- pdf_extractor.py ---
 import os
-import fitz  
-import logging
-from typing import List, Dict, Optional
+import re
+import pdfplumber
+from typing import List, Dict
 
-def extract_chunks_from_pdf(input_path: str, outline: Optional[List[Dict]] = None) -> List[Dict]:
-    try:
-        doc = fitz.open(input_path)
+MIN_SECTION_LENGTH = 50
+MAX_SECTION_LENGTH = 1000
 
-        if outline is None:
-            outline = doc.get_toc(simple=True)
+def is_heading(text: str, font_props: dict) -> bool:
+    if font_props.get('size', 0) >= 12 or 'bold' in font_props.get('fontname', '').lower():
+        return True
+    if (text.isupper() or 
+        text.endswith(':') or 
+        re.match(r'^(Section|Chapter|Part)\s+[IVXLCDM0-9]', text, re.IGNORECASE)):
+        return True
+    return False
 
-        if not outline:
-            logging.warning(f"No outline found or provided for {input_path}. Skipping.")
-            return []
-        
-        if outline and isinstance(outline[0], dict):
-            outline = [
-                (
-                    int(item["level"].replace("H", "")),
-                    item["text"].strip(),
-                    item["page"]
-                )
-                for item in outline
-            ]
-
-    except Exception as e:
-        logging.error(f"❌ Failed to open or read {input_path}: {e}")
-        return []
-
-    chunks = []
-
-    for i, section in enumerate(outline):
-        level = f"H{section[0]}"
-        title = section[1].strip()
-        page_num = section[2] - 1  
-
-        next_title = None
-        next_page = None
-        if i + 1 < len(outline):
-            next_title = outline[i + 1][1].strip()
-            next_page = outline[i + 1][2] - 1
-
-        try:
-            if next_title and next_page == page_num:
-                text = doc[page_num].get_text()
-                if title in text and next_title in text:
-                    split = text.split(title, 1)[-1].split(next_title, 1)[0]
-                elif title in text:
-                    split = text.split(title, 1)[-1]
-                else:
-                    split = ""
-
-            elif next_page is not None and next_page > page_num:
-                content_parts = []
-                text = doc[page_num].get_text()
-                content_parts.append(text.split(title, 1)[-1] if title in text else text)
-                for p in range(page_num + 1, next_page):
-                    content_parts.append(doc[p].get_text())
-                last_page_text = doc[next_page].get_text()
-                if next_title and next_title in last_page_text:
-                    content_parts.append(last_page_text.split(next_title, 1)[0])
-                else:
-                    content_parts.append(last_page_text)
-                split = "\n".join(content_parts)
-
+def merge_small_chunks(chunks: List[Dict], min_length: int = MIN_SECTION_LENGTH) -> List[Dict]:
+    merged = []
+    buffer = None
+    for chunk in chunks:
+        if len(chunk['content']) < min_length:
+            if buffer is None:
+                buffer = chunk.copy()
             else:
-                text = doc[page_num].get_text()
-                split = text.split(title, 1)[-1] if title in text else text
+                buffer['content'] += " " + chunk['content']
+                buffer['page'] = max(buffer['page'], chunk['page'])
+        else:
+            if buffer is not None:
+                if len(buffer['content']) >= min_length:
+                    merged.append(buffer)
+                buffer = None
+            merged.append(chunk)
+    if buffer is not None and len(buffer['content']) >= min_length:
+        merged.append(buffer)
+    return merged
 
-            chunks.append({
-                "document": os.path.basename(input_path),
-                "level": level,
-                "section_title": title,
-                "page": section[2],
-                "content": split.strip()
-            })
-
-        except Exception as e:
-            logging.warning(f"⚠️ Failed to process section '{title}' on page {page_num + 1}: {e}")
-
-    return chunks
+def extract_chunks(pdf_path: str) -> List[Dict]:
+    chunks = []
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            for page_num, page in enumerate(pdf.pages, 1):
+                words = page.extract_words(extra_attrs=["fontname", "size", "top"])
+                text = page.extract_text()
+                if not words or not text:
+                    continue
+                heading_candidates = {}
+                current_line = []
+                current_line_top = None
+                current_font = None
+                for word in words:
+                    if current_line_top is None or abs(word['top'] - current_line_top) < 5:
+                        if current_line_top is None:
+                            current_line_top = word['top']
+                        current_line.append(word['text'])
+                        current_font = {
+                            'size': word.get('size', 0),
+                            'fontname': word.get('fontname', '').lower()
+                        }
+                    else:
+                        line_text = ' '.join(current_line)
+                        if is_heading(line_text, current_font):
+                            heading_candidates[current_line_top] = line_text
+                        current_line = [word['text']]
+                        current_line_top = word['top']
+                        current_font = {
+                            'size': word.get('size', 0),
+                            'fontname': word.get('fontname', '').lower()
+                        }
+                if current_line:
+                    line_text = ' '.join(current_line)
+                    if is_heading(line_text, current_font):
+                        heading_candidates[current_line_top] = line_text
+                sorted_headings = sorted(heading_candidates.items(), key=lambda x: x[0])
+                headings = [h[1] for h in sorted_headings]
+                paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+                current_heading = "Introduction"
+                heading_idx = 0
+                for para in paragraphs:
+                    first_line = para.split('\n')[0].strip()
+                    if (is_heading(first_line, {'size': 0, 'fontname': ''}) or
+                        (heading_idx < len(headings) and first_line == headings[heading_idx])):
+                        current_heading = headings[heading_idx]
+                        heading_idx += 1
+                        content = '\n'.join(para.split('\n')[1:]).strip()
+                    else:
+                        content = para
+                    if content and len(content) > 20:
+                        chunks.append({
+                            "document": os.path.basename(pdf_path),
+                            "section_title": current_heading[:200],
+                            "content": content[:MAX_SECTION_LENGTH],
+                            "page": page_num
+                        })
+        chunks = merge_small_chunks(chunks)
+        print(f"\u2705 {os.path.basename(pdf_path)}: {len(chunks)} chunks extracted.")
+        return chunks
+    except Exception as e:
+        print(f"\u274C Error processing {pdf_path}: {str(e)}")
+        return []

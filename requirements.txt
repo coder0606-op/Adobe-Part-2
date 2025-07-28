@@ -1,7 +1,5 @@
-transformers==4.40.0
-onnxruntime==1.17.3
-requests==2.31.0
-numpy<2
-PyMuPDF
-pdfplumber
-
+transformers>=4.38.2
+onnxruntime>=1.17.1
+pdfplumber>=0.10.3
+numpy>=1.26.4
+scikit-learn>=1.4.1
